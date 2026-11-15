@@ -7,7 +7,7 @@
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 * **Real-Time Biometric Telemetry:** Tracks heart rate (BPM) via the MAX30102 sensor and non-contact surface/ambient temperature via the MLX90614 sensor.
 * **Dual-Display Architecture:** Live readings are rendered locally on a round GC9A01A TFT screen on the hardware device and mirrored instantly onto a web dashboard.
@@ -17,7 +17,7 @@
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 ├── main.cpp                # Arduino C++ firmware for the ESP32
@@ -26,14 +26,14 @@
 └── README.md               # Project documentation
 ```
 
-## 🧹 Resetting Data & Custom Charts
+## Resetting Data & Custom Charts
 
 The `monitor_sessions/` directory stores all completed session CSV files.
 
 - To clear any pre-recorded sample data and **start fresh with your own live sessions, charts, and graphs**, simply **delete all files inside the `monitor_sessions/` folder** (or delete the folder itself—the application will automatically recreate it on startup).
 - Once cleared, every new session you record via the hardware buttons will populate clean, custom data onto your logs and tendency charts.
 
-## 🛠️ Hardware Requirements & Pinout
+## Hardware Requirements & Pinout
 
 - **Microcontroller:** ESP32 NodeMCU / DevKit
 - **Display:** Adafruit GC9A01A 1.28" Round TFT Display (`TFT_CS: 5`, `TFT_DC: 4`, `TFT_RST: 16`)
@@ -43,7 +43,7 @@ The `monitor_sessions/` directory stores all completed session CSV files.
   - Temperature Mode Button: Pin `27` (configured with internal pull-up)
   - BPM Mode Button: Pin `17` (configured with internal pull-up)
 
-## ⚙️ Setup & Installation Guide
+## Setup & Installation Guide
 
 ### 1. Hardware Firmware (Arduino IDE)
 
@@ -76,7 +76,7 @@ The `monitor_sessions/` directory stores all completed session CSV files.
 
 5. Open your web browser and navigate to: 👉 **`http://127.0.0.1:8000`**
 
-## 🖥️ Usage Instructions
+## Usage Instructions
 
 1. **Connect to Port:** Open the web dashboard, select your ESP32's COM port from the dropdown menu, and click **Switch & Connect Port**.
 2. **Start Monitoring:** Press the physical hardware buttons connected to your ESP32 to toggle between Temperature Mode (Pin 27) and BPM Mode (Pin 17).
