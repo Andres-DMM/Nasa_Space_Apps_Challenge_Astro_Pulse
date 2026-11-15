@@ -1,0 +1,7 @@
+﻿Timestamp,Mode,Ambient (°C),Object (°C),BPM,Mean,Median,Average,Minimum,Maximum,Status
+2026-11-15 15:13:33,TEMP,30,39,,,,,,,
+2026-11-15 15:13:34,TEMP,30,41,,,,,,,
+2026-11-15 15:13:35,TEMP,30,41,,,,,,,
+2026-11-15 15:13:36,TEMP,31,40,,,,,,,
+2026-11-15 15:13:37,TEMP,31,39,,,,,,,
+SUMMARY,TEMP,,,,40.0,40.0,40.0,39.0,41.0,Normal Surface Temperature Range

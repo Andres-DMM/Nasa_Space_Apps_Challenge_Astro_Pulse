@@ -22,7 +22,6 @@ bool mlxAvailable = false;
 bool maxAvailable = false;
 
 // ================= BUTTONS =================
-// Moved TEMP button from Pin 19 (SPI MISO conflict!) to Pin 27
 const int tempButtonPin = 27; 
 const int bpmButtonPin = 17;
 const unsigned long debounceDelay = 50;
@@ -122,11 +121,9 @@ void drawTempDashboard() {
 
 void drawBPMDashboard() {
   drawFrame("HEART RATE");
-  tft.setTextColor(GC9A01A_CYAN);
-  tft.setTextSize(2);
-  tft.setCursor(82, 72);
-  tft.println("AVERAGE");
+  // Removed "AVERAGE" text per request; only showing BPM number and label
   tft.setTextColor(GC9A01A_YELLOW);
+  tft.setTextSize(2);
   tft.setCursor(100, 145);
   tft.println("BPM");
   updateStatus();
@@ -182,24 +179,33 @@ void showSummary(JsonObject summary) {
   tft.drawCircle(120, 120, 115, GC9A01A_CYAN);
   tft.setTextColor(GC9A01A_WHITE);
   tft.setTextSize(2);
-  tft.setCursor(55, 15);
-  tft.print(isBPM ? "BPM SESSION" : "TEMP SESSION");
+  tft.setCursor(50, 15);
+  tft.print(isBPM ? "BPM SUMMARY" : "TEMP SUMMARY");
+  
   const char *unit = isBPM ? " BPM" : " C";
   tft.setTextColor(GC9A01A_YELLOW);
-  tft.setCursor(25, 52);
+  tft.setCursor(25, 45);
   tft.printf("AVG: %.1f%s", summary["average"].as<float>(), unit);
-  tft.setCursor(25, 78);
-  tft.printf("MED: %.1f%s", summary["median"].as<float>(), unit);
-  tft.setTextColor(GC9A01A_CYAN);
-  tft.setCursor(25, 108);
-  tft.printf("MIN: %.1f%s", summary["minimum"].as<float>(), unit);
-  tft.setCursor(25, 134);
-  tft.printf("MAX: %.1f%s", summary["maximum"].as<float>(), unit);
-  tft.setTextColor(GC9A01A_WHITE);
-  tft.setCursor(25, 164);
-  tft.printf("N: %d", summary["sample_count"].as<int>());
+  
+  // Display threshold status / medical statement on screen
+  const char *statusMsg = summary["status_message"] | "";
   tft.setTextSize(1);
-  tft.setCursor(25, 194);
+  tft.setTextColor(GC9A01A_GREEN);
+  tft.setCursor(25, 80);
+  tft.println(statusMsg);
+
+  tft.setTextColor(GC9A01A_CYAN);
+  tft.setCursor(25, 110);
+  tft.printf("MIN: %.1f%s", summary["minimum"].as<float>(), unit);
+  tft.setCursor(25, 130);
+  tft.printf("MAX: %.1f%s", summary["maximum"].as<float>(), unit);
+
+  tft.setTextColor(GC9A01A_WHITE);
+  tft.setCursor(25, 160);
+  tft.printf("Samples: %d", summary["sample_count"].as<int>());
+
+  tft.setTextSize(1);
+  tft.setCursor(25, 195);
   tft.setTextColor(GC9A01A_RED);
   tft.print(isBPM ? "HOBBY SENSOR - NOT MEDICAL" : "SURFACE TEMP - NOT MEDICAL");
 }
@@ -286,14 +292,12 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  // Initialize TFT first so SPI claims its pins before we configure buttons
   tft.begin();
   tft.setRotation(0);
 
   pinMode(tempButtonPin, INPUT_PULLUP);
   pinMode(bpmButtonPin, INPUT_PULLUP);
 
-  // Use 100kHz Standard I2C speed — MLX90614 breaks at 400kHz!
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
   delay(100);
@@ -327,7 +331,6 @@ void loop() {
     float ambF = mlx.readAmbientTempC();
     float objF = mlx.readObjectTempC();
 
-    // Guard against NAN I2C glitches (which cast to 274589 / garbage ints)
     if (!isnan(ambF) && !isnan(objF) && ambF > -40 && objF < 150) {
       int ambientTemp = (int)round(ambF);
       int objectTemp = (int)round(objF);
