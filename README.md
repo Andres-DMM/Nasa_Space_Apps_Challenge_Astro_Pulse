@@ -36,7 +36,7 @@ The `monitor_sessions/` directory stores all completed session CSV files.
 ## Hardware Requirements & Pinout
 
 - **Microcontroller:** ESP32 NodeMCU / DevKit
-- **Display:** Adafruit GC9A01A 1.28" Round TFT Display (`TFT_CS: 5`, `TFT_DC: 4`, `TFT_RST: 16`)
+- **Display:** Adafruit GC9A01A 1.28" Round TFT Display (`TFT_CS: 5`, `TFT_DC: 4`, `TFT_RST: 16`, `TFT_SDA: 23`, `TFT_SCL: 18`)
 - **Temperature Sensor:** Adafruit MLX90614 (I2C: `SDA: 21`, `SCL: 22` at 100kHz standard speed)
 - **Heart Rate Sensor:** MAX30102 / MAX30105 Particle Sensor (I2C)
 - **Hardware Buttons:**
