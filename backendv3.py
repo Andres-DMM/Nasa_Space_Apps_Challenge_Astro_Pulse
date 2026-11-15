@@ -44,7 +44,7 @@ existing_ids = [int(m.group(1)) for f in OUTPUT_DIR.glob("monitor_session_*.csv"
 session_counter = max(existing_ids, default=0)
 
 # ============================================================
-# DASHBOARD HTML
+# DASHBOARD HTML (WITH LOGS, CHARTS, & CHART.JS)
 # ============================================================
 HTML_PAGE = r'''
 <!DOCTYPE html>
@@ -52,7 +52,9 @@ HTML_PAGE = r'''
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ESP32 Vital Monitor</title>
+<title>ESP32 Vital Monitor & Analytics</title>
+<!-- Include Chart.js for Tendency Charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 :root { color-scheme: dark; --bg: #09111f; --panel: #121f32; --line: #263b55; --muted: #9aacc2; --cyan: #42d9e8; --green: #59d6a0; --red: #ff687d; --gold: #ffd166; }
 * { box-sizing: border-box; }
@@ -73,13 +75,16 @@ h1 { margin: 0 0 6px; font-size: clamp(25px, 4vw, 36px); }
 .stat { background: #0b1728; padding: 13px; border-radius: 10px; }
 .stat b { display: block; font-size: 22px; margin-top: 8px; }
 .hint { margin-top: 14px; padding: 13px; background: #1b2b40; border-radius: 10px; line-height: 1.5; }
-.tablewrap { overflow-x: auto; }
+.tablewrap { overflow-x: auto; max-height: 350px; }
 table { width: 100%; border-collapse: collapse; margin-top: 12px; }
 td, th { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-th { color: var(--muted); }
+th { color: var(--muted); background: #0b1728; position: sticky; top: 0; }
 button, .download, select { display: inline-block; background: #174c68; color: white; border: 1px solid var(--cyan); border-radius: 8px; padding: 10px 16px; margin-top: 12px; cursor: pointer; text-decoration: none; font-size: 14px; }
 button:hover, .download:hover { background: #226a87; }
 select { background: #0b1728; padding: 9px 12px; }
+.modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; overflow-y: auto; padding: 20px; }
+.modal-content { background: var(--panel); border: 1px solid var(--cyan); border-radius: 15px; max-width: 1000px; margin: 40px auto; padding: 25px; position: relative; }
+.close-btn { background: var(--red); float: right; padding: 6px 12px; margin-top: 0; }
 .note { font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: 18px; }
 @media(max-width: 700px) {
     body { padding: 15px; }
@@ -96,7 +101,10 @@ select { background: #0b1728; padding: 9px 12px; }
 <h1>ESP32 Vital Monitor</h1>
 <div class="muted">ESP32 · MLX90614 · MAX30102 · USB Serial</div>
 </div>
+<div style="display: flex; gap: 10px; align-items: center;">
+<button onclick="openLogsModal()" style="margin-top:0; background: #1b4034; border-color: var(--green);">📂 View Logs & Charts</button>
 <div id="connection" class="pill">Connecting...</div>
+</div>
 </header>
 
 <section class="grid">
@@ -166,13 +174,48 @@ select { background: #0b1728; padding: 9px 12px; }
 
 <p class="note">
 The MAX30102 BPM output is an experimental hobby measurement, not a medical reading.<br>
-The MLX90614 measures surface temperature, not clinical core body temperature. Do not use this project for medical decisions.
+The MLX90614 measures surface temperature (fever threshold adjusted to 41°C for sensor offset). Do not use this project for medical decisions.
 </p>
 </main>
+
+<!-- LOGS & CHARTS MODAL -->
+<div id="logsModal" class="modal">
+<div class="modal-content">
+<button class="close-btn" onclick="closeLogsModal()">Close ✕</button>
+<h2>All Stored Sessions & Tendency Charts</h2>
+<p class="muted">Review historical logs, status/results, and trend tendencies across all recorded sessions.</p>
+
+<hr style="border-color: var(--line); margin: 20px 0;">
+
+<h3>📈 Temperature Session Tendencies</h3>
+<div style="background: #0b1728; padding: 15px; border-radius: 10px; margin-bottom: 25px;">
+<canvas id="tempChart" height="100"></canvas>
+</div>
+
+<h3>📈 Heart Rate (BPM) Session Tendencies</h3>
+<div style="background: #0b1728; padding: 15px; border-radius: 10px; margin-bottom: 25px;">
+<canvas id="bpmChart" height="100"></canvas>
+</div>
+
+<h3>📋 Complete Session Logs</h3>
+<div class="tablewrap" style="max-height: 400px;">
+<table>
+<thead>
+<tr><th>Session ID</th><th>Mode</th><th>Started</th><th>Ended</th><th>Samples</th><th>Avg</th><th>Min</th><th>Max</th><th>Status / Result</th><th>Action</th></tr>
+</thead>
+<tbody id="allSessionsTable">
+<tr><td colspan="10" class="muted">Loading sessions...</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
 let lastRowsSignature = "";
+let tempChartInstance = null;
+let bpmChartInstance = null;
 
 function showSummary(s) {
     if (!s) return;
@@ -211,6 +254,91 @@ async function changePort() {
         body: JSON.stringify({port})
     });
     if (res.ok) refresh();
+}
+
+async function openLogsModal() {
+    $("logsModal").style.display = "block";
+    await loadAllSessionsData();
+}
+
+function closeLogsModal() {
+    $("logsModal").style.display = "none";
+}
+
+async function loadAllSessionsData() {
+    try {
+        const res = await fetch("/api/sessions");
+        const data = await res.json();
+        const sessions = data.sessions || [];
+
+        const tbody = $("allSessionsTable");
+        tbody.innerHTML = "";
+        if (!sessions.length) {
+            tbody.innerHTML = '<tr><td colspan="10" class="muted">No recorded sessions found in folder</td></tr>';
+            return;
+        }
+
+        let tempSessions = [];
+        let bpmSessions = [];
+
+        sessions.forEach(s => {
+            if (s.mode === "TEMP") tempSessions.push(s);
+            else if (s.mode === "BPM") bpmSessions.push(s);
+
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>#${s.session_id}</td>
+                <td><b>${s.mode}</b></td>
+                <td>${s.started_at}</td>
+                <td>${s.ended_at}</td>
+                <td>${s.sample_count}</td>
+                <td>${s.average}</td>
+                <td>${s.minimum}</td>
+                <td>${s.maximum}</td>
+                <td style="color: ${s.status_message.includes('Normal') ? 'var(--green)' : 'var(--gold)'};">${s.status_message}</td>
+                <td><a class="download" style="padding: 4px 10px; margin: 0; font-size: 12px;" href="/api/download/${s.session_id}" download>CSV</a></td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        renderCharts(tempSessions, bpmSessions);
+    } catch (e) {
+        $("allSessionsTable").innerHTML = `<tr><td colspan="10" class="bad">Error loading sessions: ${e.message}</td></tr>`;
+    }
+}
+
+function renderCharts(tempData, bpmData) {
+    // Temperature Chart
+    const tempCtx = $("tempChart").getContext("2d");
+    if (tempChartInstance) tempChartInstance.destroy();
+    
+    tempChartInstance = new Chart(tempCtx, {
+        type: 'line',
+        data: {
+            labels: tempData.map(s => `#${s.session_id} (${s.started_at})`),
+            datasets: [
+                { label: 'Avg Temp (°C)', data: tempData.map(s => s.average), borderColor: '#42d9e8', backgroundColor: 'rgba(66,217,232,0.1)', fill: true, tension: 0.2 },
+                { label: 'Max Temp (°C)', data: tempData.map(s => s.maximum), borderColor: '#ff687d', borderDash: [5,5], tension: 0.2 }
+            ]
+        },
+        options: { responsive: true, plugins: { legend: { labels: { color: '#edf5ff' } } }, scales: { x: { ticks: { color: '#9aacc2' } }, y: { ticks: { color: '#9aacc2' } } } }
+    });
+
+    // BPM Chart
+    const bpmCtx = $("bpmChart").getContext("2d");
+    if (bpmChartInstance) bpmChartInstance.destroy();
+
+    bpmChartInstance = new Chart(bpmCtx, {
+        type: 'line',
+        data: {
+            labels: bpmData.map(s => `#${s.session_id} (${s.started_at})`),
+            datasets: [
+                { label: 'Avg BPM', data: bpmData.map(s => s.average), borderColor: '#59d6a0', backgroundColor: 'rgba(89,214,160,0.1)', fill: true, tension: 0.2 },
+                { label: 'Max BPM', data: bpmData.map(s => s.maximum), borderColor: '#ffd166', borderDash: [5,5], tension: 0.2 }
+            ]
+        },
+        options: { responsive: true, plugins: { legend: { labels: { color: '#edf5ff' } } }, scales: { x: { ticks: { color: '#9aacc2' } }, y: { ticks: { color: '#9aacc2' } } } }
+    });
 }
 
 async function refresh() {
@@ -278,7 +406,7 @@ def calculate_summary(readings, mode, started, ended):
     values = [float(row["object_c"] if mode == "TEMP" else row["bpm"]) for row in readings]
     avg = statistics.mean(values)
 
-    # Threshold and condition evaluation
+    # Threshold and condition evaluation (Fever threshold adjusted to >= 41.0 °C for sensor displacement)
     status_message = "Normal Range"
     if mode == "BPM":
         if avg < 60:
@@ -288,8 +416,8 @@ def calculate_summary(readings, mode, started, ended):
         else:
             status_message = "Normal Heart Rate Range"
     elif mode == "TEMP":
-        if avg >= 38.0:
-            status_message = "Elevated Temperature / Fever Range (>= 38°C)"
+        if avg >= 41.0:
+            status_message = "Elevated Temperature / Fever Range (>= 41°C)"
         elif avg < 35.0:
             status_message = "Low Temperature / Hypothermia Warning (< 35°C)"
         else:
@@ -500,6 +628,59 @@ async def status():
             "latest_summary": latest_summary,
             "completed_session_ids": completed_session_ids[:]
         }
+
+@app.get("/api/sessions")
+async def get_all_sessions():
+    """Scans OUTPUT_DIR for all saved session CSVs, parses summary info, and returns them for logs and charts."""
+    sessions = []
+    for f in sorted(OUTPUT_DIR.glob("monitor_session_*.csv")):
+        try:
+            session_id_match = re.search(r"monitor_session_(\d+)\.csv", f.name)
+            if not session_id_match: continue
+            s_id = int(session_id_match.group(1))
+
+            mode = "TEMP"
+            started_at = ""
+            ended_at = ""
+            sample_count = 0
+            avg = 0.0
+            min_val = 0.0
+            max_val = 0.0
+            status_msg = "Normal Range"
+
+            with f.open("r", encoding="utf-8-sig") as csv_file:
+                reader = csv.reader(csv_file)
+                rows = list(reader)
+                if len(rows) > 1:
+                    # Look at data rows and summary row
+                    data_rows = [r for r in rows[1:] if r and r[0] != "SUMMARY"]
+                    if data_rows:
+                        started_at = data_rows[0][0]
+                        ended_at = data_rows[-1][0]
+                        sample_count = len(data_rows)
+                    
+                    summary_row = next((r for r in rows if r and r[0] == "SUMMARY"), None)
+                    if summary_row:
+                        mode = summary_row[1] if len(summary_row) > 1 else "TEMP"
+                        avg = float(summary_row[7]) if len(summary_row) > 7 and summary_row[7] else 0.0
+                        min_val = float(summary_row[8]) if len(summary_row) > 8 and summary_row[8] else 0.0
+                        max_val = float(summary_row[9]) if len(summary_row) > 9 and summary_row[9] else 0.0
+                        status_msg = summary_row[10] if len(summary_row) > 10 and summary_row[10] else "Normal Range"
+
+            sessions.append({
+                "session_id": s_id,
+                "mode": mode,
+                "started_at": started_at,
+                "ended_at": ended_at,
+                "sample_count": sample_count,
+                "average": avg,
+                "minimum": min_val,
+                "maximum": max_val,
+                "status_message": status_msg
+            })
+        except Exception:
+            continue
+    return {"sessions": sessions}
 
 @app.get("/api/download/{session_id}")
 async def download(session_id: int):
